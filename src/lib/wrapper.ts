@@ -59,7 +59,7 @@ export class BotWrapper {
             }
         });
 
-        this.client.on('ready', () => {
+        this.client.once('ready', () => {
             console.log('Bot ready at ' + (new Date()).toUTCString());
         });
 
@@ -109,7 +109,7 @@ export class BotWrapper {
                     }
 
                     const restArguments = command.arguments?.filter(arg => arg.rest);
-                    if (restArguments) {
+                    if (restArguments && restArguments.length > 0) {
                         if (restArguments.length > 1) {
                             console.error(`Command ${command.name} registers more than one rest argument - skipping`);
                             continue;
@@ -160,9 +160,9 @@ export class BotWrapper {
         if (this.isCommand(cmd)) {
             const actualCommand = this.commands.get(cmd);
             if (actualCommand) {
-                const parsedArguments = await parseArguments(this, actualCommand, args);
+                const parsedArguments = await parseArguments(this, message, actualCommand, args);
                 if (parsedArguments) {
-                    actualCommand.run(this, {viaSlash: false, channel: message.channel, user: message.author, message: message}, ...parsedArguments);
+                    actualCommand.run(this, {viaSlash: false, channel: message.channel, user: message.author, member: message.member, message: message}, ...parsedArguments);
                 } else {
                     const effectivePrefix = await this.getEffectivePrefix(message.guild);
                     message.channel.send(`Incorrect arguments. Make sure you\'re calling the command correctly.\nUse \`${effectivePrefix}help ${actualCommand.name}\` for more information.`);

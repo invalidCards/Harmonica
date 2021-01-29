@@ -1,10 +1,10 @@
 import { Discord } from './deps.ts';
-import { BotWrapper } from "./mod.ts";
+import { BotWrapper, Duration } from "./mod.ts";
 
-/** The types that a command argument can have. Keep 1:1 with CommandArguments. */
-export type ArgumentType = 'string' | 'number' | 'user';
-/** The types of arguments a command can have. Keep 1:1 with ArgumentTypes. */
-export type CommandArgument = string | number | Discord.User;
+/** The types that a command argument can have. Keep 1:1 with CommandArgument. */
+type ArgumentType = 'string' | 'number' | 'boolean' | 'duration' | 'user' | 'role' | 'channel';
+/** The types of arguments a command can have. */
+export type CommandArgument = string | number | boolean | Duration | Discord.User | Discord.Role | Discord.GuildTextChannel;
 
 /** The definition of an argument of a command. Make sure that they are in the same order as the types in the Command<T> instance. */
 export interface ArgumentDefinition {
@@ -43,7 +43,7 @@ export interface Command<T extends CommandArgument[]> {
  * @param command The command to parse arguments for
  * @param args The raw arguments from the message
  */
-export async function parseArguments(wrapper: BotWrapper, command: Command<CommandArgument[]>, args: string[]): Promise<CommandArgument[] | undefined> {
+export async function parseArguments(wrapper: BotWrapper, message: Discord.Message, command: Command<CommandArgument[]>, args: string[]): Promise<CommandArgument[] | undefined> {
     const ret: CommandArgument[] = [];
     if (!command.arguments || !command.arguments.length) return ret;
     if (command.arguments.filter(arg => !arg.optional).length && (!args || !args.length)) return undefined;
@@ -51,25 +51,73 @@ export async function parseArguments(wrapper: BotWrapper, command: Command<Comma
     for (const argumentDefinition of command.arguments) {
         if (!args[pointer]) break;
         switch (argumentDefinition.type) {
-            case 'number': {
-                if (isNaN(parseFloat(args[pointer]))) return undefined;
-                ret.push(parseFloat(args[pointer]));
-                break;
-            }
-            case 'user': {
-                const matchArray = args[pointer].match(/^<@!(\d+)>$/);
-                if (matchArray && matchArray.length > 1) {
-                    ret.push(await wrapper.client.users.fetch(matchArray[1]));
-                } else {
-                    return undefined;
-                }
-                break;
-            }
             case 'string': {
                 if (argumentDefinition.rest) {
                     ret.push(args.slice(pointer).join(' '));
                 } else {
                     ret.push(args[pointer]);
+                }
+                break;
+            }
+            case 'number': {
+                const number = parseFloat(args[pointer]);
+                if (isNaN(number)) return undefined;
+                ret.push(number);
+                break;
+            }
+            case 'boolean': {
+                if (['true', 'yes', 'y', '1'].includes(args[pointer])) {
+                    ret.push(true);
+                } else if (['false', 'no', 'n', '0'].includes(args[pointer])) {
+                    ret.push(false);
+                } else {
+                    return undefined;
+                }
+                break;
+            }
+            case 'duration': {
+                const duration = Duration.parse(args[pointer]);
+                if (!duration) return undefined;
+                ret.push(duration);
+                break;
+            }
+            case 'user': {
+                const matchArray = args[pointer].match(/^<@!?(\d+)>$/);
+                if (matchArray && matchArray.length > 1) {
+                    const user = await wrapper.client.users.fetch(matchArray[1]);
+                    ret.push(user);
+                } else {
+                    return undefined;
+                }
+                break;
+            }
+            case 'role': {
+                if (!message.guild) return undefined;
+                const matchArray = args[pointer].match(/^<@&(\d+)>$/);
+                if (matchArray && matchArray.length > 1) {
+                    const role = await message.guild.roles.get(matchArray[1]);
+                    if (role) {
+                        ret.push(role);
+                    } else {
+                        return undefined;
+                    }
+                } else {
+                    return undefined;
+                }
+                break;
+            }
+            case 'channel': {
+                if (!message.guild) return undefined;
+                const matchArray = args[pointer].match(/^<#(\d+)>$/);
+                if (matchArray && matchArray.length > 1) {
+                    const channel = await message.guild.channels.get(matchArray[1]);
+                    if (channel && channel instanceof Discord.GuildTextChannel) {
+                        ret.push(channel);
+                    } else {
+                        return undefined;
+                    }
+                } else {
+                    return undefined;
                 }
                 break;
             }
