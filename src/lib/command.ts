@@ -17,7 +17,9 @@ export interface ArgumentDefinition {
     /** Whether or not this argument is optional. Multiple optional arguments can be defined, and will be handled in order of declaration. */
     optional?: boolean,
     /** If true, this argument gets the complete (unparsed) rest of the message as content. This only works on string-type arguments. */
-    rest?: boolean
+    rest?: boolean,
+    /** If defined, accepted values are only the ones entered in the array. Only works on string and number type arguments. Ignored if rest is set to true. */
+    options?: string[] | number[]
 }
 
 /** The basis for a command. All registered commands should be of this type. */
@@ -55,14 +57,24 @@ export async function parseArguments(wrapper: BotWrapper, message: Discord.Messa
                 if (argumentDefinition.rest) {
                     ret.push(args.slice(pointer).join(' '));
                 } else {
-                    ret.push(args[pointer]);
+                    if (argumentDefinition.options && argumentDefinition.options.length > 0 && isStringArray(argumentDefinition.options)) {
+                        if (!argumentDefinition.options.includes(args[pointer])) return undefined;
+                        ret.push(args[pointer]);
+                    } else {
+                        ret.push(args[pointer]);
+                    }
                 }
                 break;
             }
             case 'number': {
                 const number = parseFloat(args[pointer]);
                 if (isNaN(number)) return undefined;
-                ret.push(number);
+                if (argumentDefinition.options && argumentDefinition.options.length > 0 && isNumberArray(argumentDefinition.options)) {
+                    if (!argumentDefinition.options.includes(number)) return undefined;
+                    ret.push(number);
+                } else {
+                    ret.push(number);
+                }
                 break;
             }
             case 'boolean': {
@@ -139,4 +151,12 @@ export interface CommandData {
     member?: Discord.Member,
     /** The message used to call the command. Undefined if called through a slash command. */
     message?: Discord.Message
+}
+
+function isStringArray(arr: unknown[]): arr is string[] {
+    return arr.every(item => typeof item === 'string');
+}
+
+function isNumberArray(arr: unknown[]): arr is number[] {
+    return arr.every(item => typeof item === 'number');
 }
