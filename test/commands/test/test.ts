@@ -7,7 +7,7 @@ const command: Harmonica.Command<[number]> = {
         name: 'testarg',
         description: 'A test argument',
         type: 'number',
-        options: [1, 2, 4]
+        oneOf: [1, 2, 4]
     }],
     run: (wrapper: Harmonica.BotWrapper, data: Harmonica.CommandData, testarg: number) => {
         data.channel.send(`It is ${testarg}!`);

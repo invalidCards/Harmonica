@@ -7,7 +7,10 @@ const wrapper = new BotWrapper({
     owners: config.owners,
     commandPath: path.join(path.dirname(path.fromFileUrl(import.meta.url)), 'commands'),
     useSlashes: config.useSlashes,
-    prefix: config.prefix
+    prefix: config.prefix,
+    supportLink: config.supportLink,
+    supportTitle: 'invalidCards\' support server',
+    themeColor: '#8c1126'
 });
 
 wrapper.register([

@@ -19,7 +19,7 @@ export interface ArgumentDefinition {
     /** If true, this argument gets the complete (unparsed) rest of the message as content. This only works on string-type arguments. */
     rest?: boolean,
     /** If defined, accepted values are only the ones entered in the array. Only works on string and number type arguments. Ignored if rest is set to true. */
-    options?: string[] | number[]
+    oneOf?: string[] | number[]
 }
 
 /** The basis for a command. All registered commands should be of this type. */
@@ -30,7 +30,7 @@ export interface Command<T extends CommandArgument[]> {
     description: string,
     /** The definition of the arguments that this command should take. */
     arguments?: ArgumentDefinition[],
-    /** 
+    /**
      * The code to execute when running the command.
      * @param wrapper The bot wrapper handling the command
      * @param args Arguments passed to the command
@@ -57,8 +57,8 @@ export async function parseArguments(wrapper: BotWrapper, message: Discord.Messa
                 if (argumentDefinition.rest) {
                     ret.push(args.slice(pointer).join(' '));
                 } else {
-                    if (argumentDefinition.options && argumentDefinition.options.length > 0 && isStringArray(argumentDefinition.options)) {
-                        if (!argumentDefinition.options.includes(args[pointer])) return undefined;
+                    if (argumentDefinition.oneOf && argumentDefinition.oneOf.length > 0 && isStringArray(argumentDefinition.oneOf)) {
+                        if (!argumentDefinition.oneOf.includes(args[pointer])) return undefined;
                         ret.push(args[pointer]);
                     } else {
                         ret.push(args[pointer]);
@@ -69,8 +69,8 @@ export async function parseArguments(wrapper: BotWrapper, message: Discord.Messa
             case 'number': {
                 const number = parseFloat(args[pointer]);
                 if (isNaN(number)) return undefined;
-                if (argumentDefinition.options && argumentDefinition.options.length > 0 && isNumberArray(argumentDefinition.options)) {
-                    if (!argumentDefinition.options.includes(number)) return undefined;
+                if (argumentDefinition.oneOf && argumentDefinition.oneOf.length > 0 && isNumberArray(argumentDefinition.oneOf)) {
+                    if (!argumentDefinition.oneOf.includes(number)) return undefined;
                     ret.push(number);
                 } else {
                     ret.push(number);

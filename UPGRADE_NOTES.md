@@ -1,2 +1,2 @@
 Next version:
-- Replace src/lib/wrapper.ts L81 hackiness with `botUser.displayName`
+- Replace src/lib/wrapper.ts getEffectivePrefix hackiness with `botUser.displayName`

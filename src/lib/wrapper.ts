@@ -1,5 +1,6 @@
-import { Discord, path } from "./deps.ts";
-import { Command, CommandArgument, exists, parseArguments } from "./mod.ts";
+import { Discord, path } from './deps.ts';
+import { Command, CommandArgument, exists, parseArguments } from './mod.ts';
+import * as builtins from './commands/_builtins.ts';
 
 export interface BotWrapperOptions {
     /** The token to log the bot in with. */
@@ -11,22 +12,40 @@ export interface BotWrapperOptions {
     /** Whether or not to use slash commands. If false, defaults to prefix. */
     useSlashes: boolean,
     /** The prefix to use for non-slash commands. If undefined or empty, defaults to pings. */
-    prefix?: string
+    prefix?: string,
+    /** A link to the support server of the bot, used to link the server in the help command. */
+    supportLink?: string,
+    /** If supportLink is set, use this to change the name shown in the help command. Defaults to "the support server". */
+    supportTitle?: string,
+    /** The hexadecimal color string that embeds created by this bot will use. Defaults to CSS's "Dodger Blue" #1E90FF. */
+    themeColor?: string
 }
 
 export class BotWrapper {
-    client: Discord.Client;
-    groups: Map<string, string>;
-    commands: Map<string, Command<CommandArgument[]>>;
+    private _client: Discord.Client;
+    private _groups: Map<string, string>;
+    private _commands: Map<string, Command<CommandArgument[]>>;
 
     /**
      * Create a new bot wrapper, which automatically creates a new client for you.
      * @param options The options for this wrapper.
      */
     constructor(public options: BotWrapperOptions) {
-        this.client = new Discord.Client();
-        this.groups = new Map<string, string>();
-        this.commands = new Map<string, Command<CommandArgument[]>>();
+        this._client = new Discord.Client();
+        this._groups = new Map<string, string>();
+        this._commands = new Map<string, Command<CommandArgument[]>>();
+    }
+
+    get client() {
+        return this._client;
+    }
+
+    get groups() {
+        return this._groups;
+    }
+
+    get commands() {
+        return this._commands;
     }
 
     /**
@@ -37,33 +56,30 @@ export class BotWrapper {
         if (groups.length) {
             for (const group of groups) {
                 if (group[0] && group[1] && !['builtin'].includes(group[0])) {
-                    this.groups.set(group[0], group[1]);
+                    this._groups.set(group[0], group[1]);
                 } else {
                     console.error('Skipping group without name or description, or using a reserved group name.');
                     continue;
                 }
             }
         }
-        this.groups.set('builtin', 'Builtin commands');
 
         await this.registerCommands();
     }
 
-    /**
-     * Do final internal registering things, and start the bot.
-     */
+    /** Do final internal registering things, and start the bot. */
     run() {
-        this.client.on('messageCreate', (message) => {
+        this._client.on('messageCreate', (message) => {
             if (!message.author.bot) {
                 this.handleMessage(message);
             }
         });
 
-        this.client.once('ready', () => {
+        this._client.once('ready', () => {
             console.log('Bot ready at ' + (new Date()).toUTCString());
         });
 
-        this.client.connect(this.options.token, Discord.Intents.NonPrivileged);
+        this._client.connect(this.options.token, Discord.Intents.NonPrivileged);
     }
 
     /**
@@ -80,16 +96,32 @@ export class BotWrapper {
                 const botUser = await guild.me();
                 return '@' + (botUser.nick ? botUser.nick : botUser.user.username) + ' ';
             } else {
-                return '@' + this.client.user?.username + ' ';
+                return '@' + this._client.user?.username + ' ';
             }
         }
     }
 
     /**
-     * Register commands as defined in the .ts files that are in the folders of the registered groups.
+     * Creates a standard baseline template with a title, a timestamp, the color set to the bot's theme color (if available), and an optional footer text.
+     * @param title The title to be shown on the embed
+     * @param footer The optional footer text to be added to the embed
      */
-    private async registerCommands() {
-        for (const group of this.groups) {
+    getEmbedTemplate(title: string, footer?: string): Discord.Embed {
+        const embed = new Discord.Embed({
+            title: title
+        }).setTimestamp(new Date()).setColor(this.options.themeColor || '#1E90FF');
+        if (footer) {
+            embed.setFooter(footer);
+        }
+        return embed;
+    }
+
+    /** Register commands as defined in the .ts files that are in the folders of the registered groups. */
+    async registerCommands() {
+        this._commands = new Map<string, Command<CommandArgument[]>>();
+        this.registerBuiltins();
+
+        for (const group of this._groups) {
             const groupPath = path.join(this.options.commandPath, group[0]);
             if (await exists(groupPath)) {
                 for (const file of Deno.readDirSync(groupPath)) {
@@ -108,6 +140,11 @@ export class BotWrapper {
                         continue;
                     }
 
+                    if (this.isCommand(command.name)) {
+                        console.error(`Command ${command.name} is being registered twice - skipping`);
+                        continue;
+                    }
+
                     const restArguments = command.arguments?.filter(arg => arg.rest);
                     if (restArguments && restArguments.length > 0) {
                         if (restArguments.length > 1) {
@@ -121,24 +158,46 @@ export class BotWrapper {
                     }
 
                     command._group = group[0];
-                    this.commands.set(command.name, command);
+                    this._commands.set(command.name, command);
                 }
             }
         }
     }
 
-    private isCommand(name: string): boolean {
-        return this.commands.has(name);
+    /** Register builtin commands. These do not have a check whether the command already exists - these should always override manually registered commands. */
+    private registerBuiltins() {
+        this._groups.set('builtin', 'Built-in commands');
+        this.registerBuiltin(builtins.reload.command);
+        this.registerBuiltin(builtins.help.command as Command<CommandArgument[]>);
     }
 
+    /**
+     * Register a builtin command.
+     * @param command The command to register as builtin
+     */
+    private registerBuiltin(command: Command<CommandArgument[]>) {
+        command._group = 'builtin';
+        this._commands.set(command.name, command);
+    }
+
+    /**
+     * Check whether a command with the specified name is registered.
+     * @param name The command to check
+     */
+    private isCommand(name: string): boolean {
+        return this._commands.has(name);
+    }
+
+    /** Create a mention for this bot user. */
     private getBotMention(): string {
-        if (this.client.user) {
-            return this.client.user.nickMention;
+        if (this._client.user) {
+            return this._client.user.nickMention;
         } else {
             return '';
         }
     }
 
+    /** Handle message events by trying to resolve them to commands. */
     private async handleMessage(message: Discord.Message) {
         if (this.options.prefix && !message.content.startsWith(this.options.prefix)) {
             return; //TODO expose as message event
@@ -158,7 +217,7 @@ export class BotWrapper {
 
         const [cmd, ...args] = workingContent.split(' ');
         if (this.isCommand(cmd)) {
-            const actualCommand = this.commands.get(cmd);
+            const actualCommand = this._commands.get(cmd);
             if (actualCommand) {
                 const parsedArguments = await parseArguments(this, message, actualCommand, args);
                 if (parsedArguments) {
