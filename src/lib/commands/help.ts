@@ -3,6 +3,7 @@ import { BotWrapper, Command, CommandData } from '../mod.ts';
 const command: Command<[string]> = {
     name: 'help',
     description: 'Get a list of commands or details on a specific command.',
+    botPermissions: ['EMBED_LINKS'],
     arguments: [{
         name: 'command',
         description: 'The command to get details on',

@@ -1,16 +1,12 @@
 import { Discord, Harmonica } from '../../deps.ts';
 
-const command: Harmonica.Command<[number]> = {
+const command: Harmonica.Command<[]> = {
     name: 'test',
-    description: 'A test',
-    arguments: [{
-        name: 'testarg',
-        description: 'A test argument',
-        type: 'number',
-        oneOf: [1, 2, 4]
-    }],
-    run: (wrapper: Harmonica.BotWrapper, data: Harmonica.CommandData, testarg: number) => {
-        data.channel.send(`It is ${testarg}!`);
+    description: 'A test (send messages permission)',
+    botPermissions: ['EMBED_LINKS'],
+    userPermissions: ['SEND_MESSAGES'],
+    run: (wrapper: Harmonica.BotWrapper, data: Harmonica.CommandData) => {
+        data.channel.send('Hi!');
     }
 };
 

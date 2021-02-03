@@ -219,6 +219,30 @@ export class BotWrapper {
         if (this.isCommand(cmd)) {
             const actualCommand = this._commands.get(cmd);
             if (actualCommand) {
+                if (actualCommand.botPermissions && actualCommand.botPermissions.length > 0 && message.guild) {
+                    const guildChannel = await message.guild.channels.get(message.channelID) as Discord.GuildTextChannel | undefined;
+                    if (guildChannel && !(await guildChannel.permissionsFor(this._client.user?.id as string)).has(actualCommand.botPermissions)) {
+                        message.channel.send(`The bot is missing permissions to run this command. Contact your server administrator to have them changed.\nRequired permissions: ${actualCommand.botPermissions.join(', ')}`);
+                        return;
+                    }
+                }
+
+                if (actualCommand.userPermissions && !this.options.owners.includes(message.author.id)) {
+                    if ((actualCommand.userPermissions === 'BOT_OWNER') ||
+                        (actualCommand.userPermissions === 'GUILD_OWNER' && message.guild && message.guild.ownerID !== message.author.id)) {
+                        message.channel.send(`You lack the permissions required to execute this command.`);
+                        return;
+                    } else {
+                        if (actualCommand.userPermissions.length > 0 && message.guild) {
+                            const guildChannel = await message.guild.channels.get(message.channelID) as Discord.GuildTextChannel | undefined;
+                            if (guildChannel && !(await guildChannel.permissionsFor(message.author.id)).has(actualCommand.userPermissions)) {
+                                message.channel.send(`You lack the permissions required to execute this command. (Permission check executed)`);
+                                return;
+                            }
+                        }
+                    }
+                }
+
                 const parsedArguments = await parseArguments(this, message, actualCommand, args);
                 if (parsedArguments) {
                     actualCommand.run(this, {viaSlash: false, channel: message.channel, user: message.author, member: message.member, message: message}, ...parsedArguments);

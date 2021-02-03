@@ -1,5 +1,5 @@
 import { Discord } from './deps.ts';
-import { BotWrapper, Duration } from "./mod.ts";
+import { BotWrapper, Duration, PermissionFlags } from "./mod.ts";
 
 /** The types that a command argument can have. Keep 1:1 with CommandArgument. */
 type ArgumentType = 'string' | 'number' | 'boolean' | 'duration' | 'user' | 'role' | 'channel';
@@ -28,6 +28,13 @@ export interface Command<T extends CommandArgument[]> {
     name: string,
     /** The description of the command. Between 1 and 100 characters if using slash commands, unlimited otherwise. */
     description: string,
+    /** The permissions that the bot must have in order to run the command. */
+    botPermissions?: PermissionFlags[],
+    /**
+     * The permissions that the user must have in order to run the command.
+     * Bot and guild owners can do everything regardless, though guild owners cannot run bot owner commands.
+     */
+    userPermissions?: 'BOT_OWNER' | 'GUILD_OWNER' | PermissionFlags[],
     /** The definition of the arguments that this command should take. */
     arguments?: ArgumentDefinition[],
     /**
