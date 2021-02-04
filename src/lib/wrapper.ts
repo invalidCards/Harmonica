@@ -1,5 +1,5 @@
 import { Discord, path } from './deps.ts';
-import { Command, CommandArgument, exists, parseArguments } from './mod.ts';
+import { Command, CommandArgument, exists, parseArguments, getDiscordArgumentType } from './mod.ts';
 import * as builtins from './commands/_builtins.ts';
 
 export interface BotWrapperOptions {
@@ -18,9 +18,14 @@ export interface BotWrapperOptions {
     /** If supportLink is set, use this to change the name shown in the help command. Defaults to "the support server". */
     supportTitle?: string,
     /** The hexadecimal color string that embeds created by this bot will use. Defaults to CSS's "Dodger Blue" #1E90FF. */
-    themeColor?: string
+    themeColor?: string,
+    /** Whether or not to register slash commands in the test guild as defined by the testGuildId. Does nothing if slashes are turned off. */
+    useTestGuild?: boolean,
+    /** The ID of the guild in which to test slash commands, if useTestGuild is true. Does nothing if slashes are turned off. */
+    testGuildId?: string
 }
 
+/** The main bot wrapper, and the entry point for Harmonica bots. */
 export class BotWrapper {
     private _client: Discord.Client;
     private _groups: Map<string, string>;
@@ -70,12 +75,21 @@ export class BotWrapper {
     /** Do final internal registering things, and start the bot. */
     run() {
         this._client.on('messageCreate', (message) => {
-            if (!message.author.bot) {
+            if (!this.options.useSlashes && !message.author.bot) {
                 this.handleMessage(message);
             }
         });
 
+        this._client.on('interactionCreate', (interaction) => {
+            if (this.options.useSlashes && !interaction.user.bot && interaction.type === Discord.InteractionType.APPLICATION_COMMAND) {
+                this.handleSlashInteraction(interaction);
+            }
+        });
+
         this._client.once('ready', () => {
+            if (this.options.useSlashes) {
+                this.registerSlashes();
+            }
             console.log('Bot ready at ' + (new Date()).toUTCString());
         });
 
@@ -243,7 +257,7 @@ export class BotWrapper {
                     }
                 }
 
-                const parsedArguments = await parseArguments(this, message, actualCommand, args);
+                const parsedArguments = await parseArguments(this, actualCommand, args, message.guild);
                 if (parsedArguments) {
                     actualCommand.run(this, {viaSlash: false, channel: message.channel, user: message.author, member: message.member, message: message}, ...parsedArguments);
                 } else {
@@ -251,6 +265,104 @@ export class BotWrapper {
                     message.channel.send(`Incorrect arguments. Make sure you\'re calling the command correctly.\nUse \`${effectivePrefix}help ${actualCommand.name}\` for more information.`);
                 }
             }
+        }
+    }
+
+    /** Register slash commands to Discord, so that they may be used. */
+    async registerSlashes() {
+        let registeredCommands: Discord.Collection<string, Discord.SlashCommand>;
+        if (this.options.useTestGuild && this.options.testGuildId)
+        {
+            registeredCommands = await this._client.slash.commands.guild(this.options.testGuildId);
+        } else {
+            registeredCommands = await this._client.slash.commands.all();
+        }
+
+        if (!registeredCommands) return;
+
+        for (const registeredCommand of registeredCommands.keys()) {
+            if (!this._commands.has(registeredCommand)) {
+                this._client.slash.commands.delete(registeredCommand, this.options.useTestGuild ? this.options.testGuildId : undefined);
+            }
+        }
+
+        for (const localCommand of this._commands.values()) {
+            const slashCommandDefinition: Discord.SlashCommandPartial = {
+                name: localCommand.name,
+                description: localCommand.description
+            };
+
+            if (localCommand.arguments && localCommand.arguments.length > 0) {
+                if (!slashCommandDefinition.options) slashCommandDefinition.options = [];
+                for (const argument of localCommand.arguments) {
+                    const slashCommandOption: Discord.SlashCommandOption = {
+                        name: argument.name,
+                        description: argument.description,
+                        type: getDiscordArgumentType(argument.type),
+                        required: !argument.optional
+                    };
+                    if (argument.oneOf && argument.oneOf.length > 0) {
+                        if (!slashCommandOption.choices) slashCommandOption.choices = [];
+                        for (const option of argument.oneOf) {
+                            slashCommandOption.choices.push({name: option.toString(), value: option});
+                        }
+                    }
+                    slashCommandDefinition.options.push(slashCommandOption);
+                }
+            }
+            this._client.slash.commands.create(slashCommandDefinition, this.options.useTestGuild ? this.options.testGuildId : undefined);
+        }
+    }
+
+    /**
+     * Handle an incoming slash interaction.
+     * @param interaction The incoming interaction
+     */
+    private async handleSlashInteraction(interaction: Discord.Interaction) {
+        const localCommand = this._commands.get(interaction.name);
+        if (!localCommand) {
+            return;
+        }
+
+        if (localCommand.botPermissions && localCommand.botPermissions.length > 0) {
+            if (!(await interaction.channel.permissionsFor(this._client.user?.id as string)).has(localCommand.botPermissions)) {
+                interaction.respond({type: Discord.InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                    content: `The bot is missing permissions to run this command. Contact your server administrator to have them changed.\nRequired permissions: ${localCommand.botPermissions.join(', ')}`});
+                return;
+            }
+        }
+
+        if (localCommand.userPermissions && !this.options.owners.includes(interaction.user.id)) {
+            if ((localCommand.userPermissions === 'BOT_OWNER') ||
+                (localCommand.userPermissions === 'GUILD_OWNER' && interaction.guild.ownerID !== interaction.user.id) ||
+                (localCommand.userPermissions.length > 0 && !(await interaction.channel.permissionsFor(interaction.user.id)).has(localCommand.userPermissions))) {
+                await interaction.respond({type: Discord.InteractionResponseType.ACKNOWLEDGE});
+                (await interaction.user.createDM()).send(`You lack the permissions required to execute this command.`);
+                return;
+            }
+        }
+
+        const rawArgs: string[] = [];
+        let cmdArgumentCounter = 0;
+        for (const argument of interaction.options) {
+            if (localCommand.arguments && localCommand.arguments[cmdArgumentCounter]) {
+                switch (localCommand.arguments[cmdArgumentCounter].type) {
+                    case 'user': rawArgs.push(`<@!${argument.value.toString()}>`); break;
+                    case 'channel': rawArgs.push(`<#${argument.value.toString()}>`); break;
+                    case 'role': rawArgs.push(`<@&${argument.value.toString()}`); break;
+                    default: rawArgs.push(argument.value.toString());
+                }
+            }
+            cmdArgumentCounter++;
+        }
+
+        const parsedArguments = await parseArguments(this, localCommand, rawArgs, interaction.guild);
+        if (parsedArguments) {
+            const newInteraction = await interaction.respond(localCommand.slashResponse);
+            localCommand.run(this, {viaSlash: true, channel: interaction.channel, user: interaction.user, member: interaction.member, interaction: newInteraction}, ...parsedArguments);
+        } else {
+            await interaction.respond({type: Discord.InteractionResponseType.ACKNOWLEDGE});
+            (await interaction.user.createDM()).send('Something went wrong processing your slash command. Try again later, or contact the bot owner if the problem persists.');
         }
     }
 }

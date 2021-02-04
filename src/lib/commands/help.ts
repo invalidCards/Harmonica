@@ -1,9 +1,11 @@
+import { Discord } from '../deps.ts';
 import { BotWrapper, Command, CommandData } from '../mod.ts';
 
 const command: Command<[string]> = {
     name: 'help',
     description: 'Get a list of commands or details on a specific command.',
     botPermissions: ['EMBED_LINKS'],
+    slashResponse: {type: Discord.InteractionResponseType.ACKNOWLEDGE},
     arguments: [{
         name: 'command',
         description: 'The command to get details on',
@@ -31,7 +33,11 @@ const command: Command<[string]> = {
                     }
                 }
 
-                data.channel.send(embed);
+                if (data.viaSlash) {
+                    (await data.user.createDM()).send(embed);
+                } else {
+                    data.channel.send(embed);
+                }
             }
         } else {
             const groups = Array.from(wrapper.groups.keys()).filter(group => group !== 'builtin').sort((a,b) => a.localeCompare(b));
@@ -54,7 +60,11 @@ const command: Command<[string]> = {
                 }
             }
 
-            data.channel.send(embed);
+            if (data.viaSlash) {
+                (await data.user.createDM()).send(embed);
+            } else {
+                data.channel.send(embed);
+            }
         }
     }
 }

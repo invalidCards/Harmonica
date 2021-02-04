@@ -10,7 +10,9 @@ const wrapper = new BotWrapper({
     prefix: config.prefix,
     supportLink: config.supportLink,
     supportTitle: 'invalidCards\' support server',
-    themeColor: '#8c1126'
+    themeColor: '#8c1126',
+    useTestGuild: config.useTestGuild,
+    testGuildId: config.testGuildId
 });
 
 wrapper.register([

@@ -35,6 +35,8 @@ export interface Command<T extends CommandArgument[]> {
      * Bot and guild owners can do everything regardless, though guild owners cannot run bot owner commands.
      */
     userPermissions?: 'BOT_OWNER' | 'GUILD_OWNER' | PermissionFlags[],
+    /** The response that this should give if called through a slash command. */
+    slashResponse: Discord.InteractionResponse,
     /** The definition of the arguments that this command should take. */
     arguments?: ArgumentDefinition[],
     /**
@@ -49,10 +51,12 @@ export interface Command<T extends CommandArgument[]> {
 
 /**
  * Translates textual arguments to typed arguments depending on the command's argument definition.
+ * @param wrapper The bot wrapper
  * @param command The command to parse arguments for
  * @param args The raw arguments from the message
+ * @param guild The guild that the command was called from. Undefined if called from a DM.
  */
-export async function parseArguments(wrapper: BotWrapper, message: Discord.Message, command: Command<CommandArgument[]>, args: string[]): Promise<CommandArgument[] | undefined> {
+export async function parseArguments(wrapper: BotWrapper, command: Command<CommandArgument[]>, args: string[], guild?: Discord.Guild): Promise<CommandArgument[] | undefined> {
     const ret: CommandArgument[] = [];
     if (!command.arguments || !command.arguments.length) return ret;
     if (command.arguments.filter(arg => !arg.optional).length && (!args || !args.length)) return undefined;
@@ -111,10 +115,10 @@ export async function parseArguments(wrapper: BotWrapper, message: Discord.Messa
                 break;
             }
             case 'role': {
-                if (!message.guild) return undefined;
+                if (!guild) return undefined;
                 const matchArray = args[pointer].match(/^<@&(\d+)>$/);
                 if (matchArray && matchArray.length > 1) {
-                    const role = await message.guild.roles.get(matchArray[1]);
+                    const role = await guild.roles.get(matchArray[1]);
                     if (role) {
                         ret.push(role);
                     } else {
@@ -126,10 +130,10 @@ export async function parseArguments(wrapper: BotWrapper, message: Discord.Messa
                 break;
             }
             case 'channel': {
-                if (!message.guild) return undefined;
+                if (!guild) return undefined;
                 const matchArray = args[pointer].match(/^<#(\d+)>$/);
                 if (matchArray && matchArray.length > 1) {
-                    const channel = await message.guild.channels.get(matchArray[1]);
+                    const channel = await guild.channels.get(matchArray[1]);
                     if (channel && channel instanceof Discord.GuildTextChannel) {
                         ret.push(channel);
                     } else {
@@ -157,7 +161,24 @@ export interface CommandData {
     /** The Discord user as guild member that called the command. Undefined if called from a DM. */
     member?: Discord.Member,
     /** The message used to call the command. Undefined if called through a slash command. */
-    message?: Discord.Message
+    message?: Discord.Message,
+    /** The interaction generated after responding with the command's slashResponse. Undefined if called through normal means. */
+    interaction?: Discord.Interaction
+}
+
+/**
+ * Convert a local argument type to one that Discord can handle to register slash commands.
+ * @param argumentType The local argument type
+ */
+export function getDiscordArgumentType(argumentType: ArgumentType): Discord.SlashCommandOptionType {
+    switch (argumentType) {
+        case 'number': return Discord.SlashCommandOptionType.INTEGER;
+        case 'boolean': return Discord.SlashCommandOptionType.BOOLEAN;
+        case 'user': return Discord.SlashCommandOptionType.USER;
+        case 'channel': return Discord.SlashCommandOptionType.CHANNEL;
+        case 'role': return Discord.SlashCommandOptionType.ROLE;
+        default: return Discord.SlashCommandOptionType.STRING;
+    }
 }
 
 function isStringArray(arr: unknown[]): arr is string[] {

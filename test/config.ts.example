@@ -4,4 +4,6 @@ export default {
     useSlashes: false,
     prefix: '',
     supportLink: ''
+    useTestGuild: false,
+    testGuildId: ''
 }
