@@ -342,19 +342,24 @@ export class BotWrapper {
             }
         }
 
-        const rawArgs: string[] = [];
-        let cmdArgumentCounter = 0;
-        for (const argument of interaction.options) {
-            if (localCommand.arguments && localCommand.arguments[cmdArgumentCounter]) {
-                switch (localCommand.arguments[cmdArgumentCounter].type) {
-                    case 'user': rawArgs.push(`<@!${argument.value.toString()}>`); break;
-                    case 'channel': rawArgs.push(`<#${argument.value.toString()}>`); break;
-                    case 'role': rawArgs.push(`<@&${argument.value.toString()}`); break;
-                    default: rawArgs.push(argument.value.toString());
+        let rawArgs: string[] = Array(20).fill('');
+        if (localCommand.arguments) {
+            const mappedArguments = localCommand.arguments.map(arg => arg.name);
+            for (const argument of interaction.options) {
+                const index = mappedArguments.indexOf(argument.name);
+
+                if (index > -1) {
+                    switch (localCommand.arguments[index].type) {
+                        case 'user': rawArgs[index] = `<@!${argument.value.toString()}>`; break;
+                        case 'channel': rawArgs[index] = `<#${argument.value.toString()}>`; break;
+                        case 'role': rawArgs[index] = `<@&${argument.value.toString()}`; break;
+                        default: rawArgs[index] = argument.value.toString();
+                    }
                 }
             }
-            cmdArgumentCounter++;
         }
+
+        rawArgs = rawArgs.filter(item => item !== '');
 
         const parsedArguments = await parseArguments(this, localCommand, rawArgs, interaction.guild);
         if (parsedArguments) {
