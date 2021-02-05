@@ -36,7 +36,7 @@ export interface Command<T extends CommandArgument[]> {
      */
     userPermissions?: 'BOT_OWNER' | 'GUILD_OWNER' | PermissionFlags[],
     /** The response that this should give if called through a slash command. */
-    slashResponse: Discord.InteractionResponse,
+    slashResponse?: Discord.InteractionResponse,
     /** The definition of the arguments that this command should take. */
     arguments?: ArgumentDefinition[],
     /**

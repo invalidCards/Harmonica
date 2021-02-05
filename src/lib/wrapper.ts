@@ -358,7 +358,7 @@ export class BotWrapper {
 
         const parsedArguments = await parseArguments(this, localCommand, rawArgs, interaction.guild);
         if (parsedArguments) {
-            const newInteraction = await interaction.respond(localCommand.slashResponse);
+            const newInteraction = await interaction.respond(localCommand.slashResponse || {type: Discord.InteractionResponseType.ACKNOWLEDGE});
             localCommand.run(this, {viaSlash: true, channel: interaction.channel, user: interaction.user, member: interaction.member, interaction: newInteraction}, ...parsedArguments);
         } else {
             await interaction.respond({type: Discord.InteractionResponseType.ACKNOWLEDGE});
