@@ -1,5 +1,5 @@
 import { Discord, path } from './deps.ts';
-import { Command, CommandArgument, exists, parseArguments, getDiscordArgumentType } from './mod.ts';
+import { Command, CommandArgument, BotEvent, EventTypes, EventData, exists, parseArguments, getDiscordArgumentType } from './mod.ts';
 import * as builtins from './commands/_builtins.ts';
 
 export interface BotWrapperOptions {
@@ -9,6 +9,8 @@ export interface BotWrapperOptions {
     owners: string[],
     /** The root path of the folder where all commands are kept. */
     commandPath: string,
+    /** The path of the folder where all events are kept. */
+    eventPath: string,
     /** Whether or not to use slash commands. If false, defaults to prefix. */
     useSlashes: boolean,
     /** The prefix to use for non-slash commands. If undefined or empty, defaults to pings. */
@@ -30,6 +32,7 @@ export class BotWrapper {
     private _client: Discord.Client;
     private _groups: Map<string, string>;
     private _commands: Map<string, Command<CommandArgument[]>>;
+    private _events: BotEvent[];
 
     /**
      * Create a new bot wrapper, which automatically creates a new client for you.
@@ -39,6 +42,7 @@ export class BotWrapper {
         this._client = new Discord.Client();
         this._groups = new Map<string, string>();
         this._commands = new Map<string, Command<CommandArgument[]>>();
+        this._events = [];
     }
 
     get client() {
@@ -78,6 +82,7 @@ export class BotWrapper {
             if (!this.options.useSlashes && !message.author.bot) {
                 this.handleMessage(message);
             }
+            this.handleEvent(EventTypes.MESSAGE, {message: message});
         });
 
         this._client.on('interactionCreate', (interaction) => {
@@ -85,6 +90,8 @@ export class BotWrapper {
                 this.handleSlashInteraction(interaction);
             }
         });
+
+        this.registerDiscordEventHandlers();
 
         this._client.once('ready', () => {
             if (this.options.useSlashes) {
@@ -214,11 +221,11 @@ export class BotWrapper {
     /** Handle message events by trying to resolve them to commands. */
     private async handleMessage(message: Discord.Message) {
         if (this.options.prefix && !message.content.startsWith(this.options.prefix)) {
-            return; //TODO expose as message event
+            return;
         }
 
         if (!this.options.prefix && !message.content.startsWith(this.getBotMention())) {
-            return; //TODO expose as message event
+            return;
         }
 
         let workingContent = message.content;
@@ -237,6 +244,7 @@ export class BotWrapper {
                     const guildChannel = await message.guild.channels.get(message.channelID) as Discord.GuildTextChannel | undefined;
                     if (guildChannel && !(await guildChannel.permissionsFor(this._client.user?.id as string)).has(actualCommand.botPermissions)) {
                         message.channel.send(`The bot is missing permissions to run this command. Contact your server administrator to have them changed.\nRequired permissions: ${actualCommand.botPermissions.join(', ')}`);
+                        this.handleEvent(EventTypes.CMD_BOT_MISSING_PERMISSION, {message: message, command: actualCommand});
                         return;
                     }
                 }
@@ -245,12 +253,14 @@ export class BotWrapper {
                     if ((actualCommand.userPermissions === 'BOT_OWNER') ||
                         (actualCommand.userPermissions === 'GUILD_OWNER' && message.guild && message.guild.ownerID !== message.author.id)) {
                         message.channel.send(`You lack the permissions required to execute this command.`);
+                        this.handleEvent(EventTypes.CMD_USER_MISSING_PERMISSION, {message: message, command: actualCommand});
                         return;
                     } else {
                         if (actualCommand.userPermissions.length > 0 && message.guild) {
                             const guildChannel = await message.guild.channels.get(message.channelID) as Discord.GuildTextChannel | undefined;
                             if (guildChannel && !(await guildChannel.permissionsFor(message.author.id)).has(actualCommand.userPermissions)) {
-                                message.channel.send(`You lack the permissions required to execute this command. (Permission check executed)`);
+                                message.channel.send(`You lack the permissions required to execute this command.`);
+                                this.handleEvent(EventTypes.CMD_USER_MISSING_PERMISSION, {message: message, command: actualCommand});
                                 return;
                             }
                         }
@@ -263,6 +273,7 @@ export class BotWrapper {
                 } else {
                     const effectivePrefix = await this.getEffectivePrefix(message.guild);
                     message.channel.send(`Incorrect arguments. Make sure you\'re calling the command correctly.\nUse \`${effectivePrefix}help ${actualCommand.name}\` for more information.`);
+                    this.handleEvent(EventTypes.CMD_INCORRECT_ARGUMENTS, {message: message, command: actualCommand, commandArgumentsRaw: args});
                 }
             }
         }
@@ -369,5 +380,38 @@ export class BotWrapper {
             await interaction.respond({type: Discord.InteractionResponseType.ACKNOWLEDGE});
             (await interaction.user.createDM()).send('Something went wrong processing your slash command. Try again later, or contact the bot owner if the problem persists.');
         }
+    }
+
+    async registerEvents() {
+        this._events = [];
+        if (await exists(this.options.eventPath)) {
+            for (const file of Deno.readDirSync(this.options.eventPath)) {
+                if (!file.isFile || !file.name.endsWith('.ts')) {
+                    continue;
+                }
+                const mod = (await import('file:///' + path.join(this.options.eventPath, file.name + '#' + Math.random().toString()))).default;
+                let botEvent;
+                try {
+                    botEvent = mod as BotEvent;
+                } catch (error) {
+                    console.error(error);
+                    continue;
+                }
+                if (!botEvent) {
+                    continue;
+                }
+                this._events.push(botEvent);
+            }
+        } else {
+            console.error('Event path does not exist. Skipping event registration.');
+        }
+    }
+
+    private handleEvent(type: EventTypes, data: EventData) {
+        this._events.filter(evt => evt.triggers.includes(type)).forEach(evt => evt.run(this, data));
+    }
+
+    private registerDiscordEventHandlers() {
+
     }
 }

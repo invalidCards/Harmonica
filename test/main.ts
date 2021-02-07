@@ -6,6 +6,7 @@ const wrapper = new BotWrapper({
     token: config.token,
     owners: config.owners,
     commandPath: path.join(path.dirname(path.fromFileUrl(import.meta.url)), 'commands'),
+    eventPath: path.join(path.dirname(path.fromFileUrl(import.meta.url)), 'events'),
     useSlashes: config.useSlashes,
     prefix: config.prefix,
     supportLink: config.supportLink,

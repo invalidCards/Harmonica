@@ -12,6 +12,7 @@ const command: Command<[]> = {
         if (wrapper.options.useSlashes) {
             await wrapper.registerSlashes();
         }
+        await wrapper.registerEvents();
         reply.edit('✅ Commands reloaded!')
     }
 }
